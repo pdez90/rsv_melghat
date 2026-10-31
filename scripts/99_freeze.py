@@ -50,7 +50,9 @@ AUTHORITATIVE = [
  "26_sequencing_step_within_season.csv",
  "27_discordant_cohort_status.csv","27_coverage_declared_definition.csv",
  "06_convergence_diagnosis.csv","28_dependency_check.csv",
- "25_g_boundary_agreement.csv"]
+ "25_g_boundary_agreement.csv",
+ "29_household_key_diagnostic.csv","29_household_key_partition_identity.csv",
+ "29_household_key_mother_field.csv"]
 
 def sha256(p):
     h = hashlib.sha256()

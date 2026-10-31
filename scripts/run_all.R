@@ -94,7 +94,8 @@ if (core) {
 ## These were previously run by hand and are the ones most at risk of going
 ## stale: every figure they produce is quoted in the manuscript.
 for (s in c("22_spatial_conditioned.R", "23_community_vs_facility.R",
-            "26_ascertainment.R", "27_cohort_status_audit.R")) run_r(s)
+            "26_ascertainment.R", "27_cohort_status_audit.R",
+            "29_household_key_diagnostic.R")) run_r(s)
 
 ## ---- stage D: contextual alignment harmonisation and masks -----------------
 ## Must precede stage E: 15_contextual_prep.py writes output/15_coordmap_*.csv,
