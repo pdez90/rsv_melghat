@@ -128,7 +128,16 @@ fit_o2 <- function(vill) {
          OR = round(exp(z[1]), 3), lo = round(exp(z[1] - 1.96 * z[2]), 3),
          hi = round(exp(z[1] + 1.96 * z[2]), 3), p = round(z[4], 3),
          singular = isSingular(m),
-         converged = is.null(m@optinfo$conv$lme4$messages)) %>%
+         ## Convergence is recorded from the SAME two checks as the five-model
+         ## severity table: lme4's own post-fit messages AND the optimizer's
+         ## return code. Until 2026-10-31 this fit exported only the first, so
+         ## the manuscript's claim that every interpreted fit carries both was
+         ## not supported by this table.
+         no_lme4_msg = is.null(m@optinfo$conv$lme4$messages),
+         optimizer_code = tryCatch(as.integer(m@optinfo$conv$opt), error = function(e) NA_integer_),
+         converged = is.null(m@optinfo$conv$lme4$messages) &&
+                     identical(tryCatch(as.integer(m@optinfo$conv$opt),
+                                        error = function(e) NA_integer_), 0L)) %>%
     mutate(status = case_when(
       !converged &  singular ~ "UNRELIABLE: did not converge; singular",
       !converged             ~ "UNRELIABLE: did not converge",

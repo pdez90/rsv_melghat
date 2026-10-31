@@ -137,8 +137,15 @@ div <- d %>% group_by(nc_dataset, season) %>% group_modify(function(x, key) {
   dc <- replicate(B, mp(sample(gc, k))); df <- replicate(B, mp(sample(gf, k)))
   consistency <- mean(dc >= df, na.rm = TRUE)
   tibble(n_comm = length(gc), n_fac = length(gf), k = k,
-         d_comm = round(median(dc, na.rm = TRUE), 3),
-         d_fac  = round(median(df, na.rm = TRUE), 3),
+         ## TWO DIFFERENT QUANTITIES, kept in separately named columns. Until
+         ## 2026-10-31 the rarefied medians were exported under d_comm/d_fac
+         ## beside obs_diff, which is the difference of ALL-PAIR means, so the
+         ## columns did not subtract to the difference and a table built from
+         ## them mixed a descriptive with an inferential statistic.
+         d_comm_allpair = round(mp(x$FieldNoNIV_f[x$setting == "community-managed"]), 3),
+         d_fac_allpair  = round(mp(x$FieldNoNIV_f[x$setting != "community-managed"]), 3),
+         d_comm_rarefied_median = round(median(dc, na.rm = TRUE), 3),
+         d_fac_rarefied_median  = round(median(df, na.rm = TRUE), 3),
          obs_diff = round(obs, 3),
          ordering_consistency = round(consistency, 4),
          p_label_perm = round(pperm, 4), p_mc_se = round(mc_se, 4), perms_usable = okp,

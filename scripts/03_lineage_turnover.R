@@ -11,6 +11,10 @@ ari <- read_csv(data_path("ari.csv"), show_col_types = FALSE, guess_max = 20000)
          # swabbed, so positivity must be computed over SWABBED episodes only.
          swabbed = !is.na(nswab_episode) & nswab_episode == 1,
          rsv_pos = rsva_episode == 1 | rsvb_episode == 1,
+         # NOT mutually exclusive: this tests A first, so a dual-positive
+         # episode is labelled RSV-A. Used only by the by-month display below,
+         # which is descriptive and not an authoritative table. The seasonal
+         # cohort table builds its own three-level subgroup; see section 2.
          subgroup = case_when(rsva_episode == 1 ~ "RSV-A", rsvb_episode == 1 ~ "RSV-B"),
          # row number of the UNFILTERED read, matching 01_link_sequencing.R,
          # so dat$ep_row refers to the same episodes
@@ -53,9 +57,26 @@ dom <- d %>% count(season, nc_dataset) %>% group_by(season) %>%
 print(as.data.frame(dom))
 
 ## ---- 2. all cohort RSV+ episodes by season (the full denominator) -----------
-cohort_season <- ari %>% filter(rsv_pos) %>% count(season, subgroup, name = "episodes") %>%
+## MUTUALLY EXCLUSIVE subgroup columns. `subgroup` above is a case_when that
+## tests rsva_episode first, so an episode positive for BOTH subgroups was
+## silently counted as RSV-A. That made the RSV-B column (370) smaller than the
+## number of episodes with a positive B flag (376) while the row total stayed
+## correct, so nothing in the table revealed the six dual-positive episodes.
+## They are now their own column and the allocation is no longer hidden.
+## The subgroup column is a FACTOR with all three levels, and count() is given
+## .drop = FALSE, so every season yields all three columns even when a category
+## is empty. That avoids a conditional column fix-up that would be silent if it
+## ever stopped firing.
+SUBGROUP_LEVELS <- c("RSV-A only", "RSV-B only", "A/B dual-positive")
+cohort_season <- ari %>% filter(rsv_pos) %>%
+  mutate(subgroup = factor(
+    case_when(rsva_episode == 1 & rsvb_episode == 1 ~ "A/B dual-positive",
+              rsva_episode == 1                     ~ "RSV-A only",
+              rsvb_episode == 1                     ~ "RSV-B only"),
+    levels = SUBGROUP_LEVELS)) %>%
+  count(season, subgroup, name = "episodes", .drop = FALSE) %>%
   pivot_wider(names_from = subgroup, values_from = episodes, values_fill = 0) %>%
-  mutate(total = `RSV-A` + `RSV-B`) %>%
+  mutate(total = `RSV-A only` + `RSV-B only` + `A/B dual-positive`) %>%
   left_join(season_tot, by = "season") %>%
   left_join(season_declared, by = "season") %>%
   left_join(all_specimens, by = "season") %>%

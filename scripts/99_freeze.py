@@ -109,6 +109,10 @@ def collect():
         "intermediate: tree build provenance")
     add([p for p in listdir("output") if os.path.basename(p).startswith("17_mask_")], "intermediate: mask")
     add([os.path.join(OUT, f) for f in AUTHORITATIVE], "authoritative result")
+    # Figures were collected by no group at all, so the only figure in the
+    # manuscript was outside the freeze entirely -- and the embedded copy turned
+    # out not to be the one the pipeline produces.
+    add([p for p in listdir("output") if p.endswith(".png")], "figure")
     add(listdir("manuscript", {".docx", ".pdf"}), "manuscript")
     # a file can be reached by two routes (an external cohort file copied into
     # data/, say); keep the first listing so each path appears exactly once
