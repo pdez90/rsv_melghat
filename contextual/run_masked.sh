@@ -4,6 +4,21 @@
 # subgroup-specific G HVR2 window (RSV-A aa 230-322, RSV-B aa 215-311), with every
 # boundary derived through the reference-to-alignment map and verified.
 set -euo pipefail
+# SHA256SUMS: REPLACE the entry for each rebuilt file instead of appending one.
+# Appending (the previous behaviour) leaves two different digests under the same
+# filename after a rebuild, so the checksum file contradicts itself and cannot be
+# used to verify anything.
+record_sums() {
+  local d="$1"; shift
+  ( cd "$d" || exit 1
+    touch SHA256SUMS.txt
+    for f in "$@"; do
+      grep -vF "  ${f}" SHA256SUMS.txt > SHA256SUMS.next || true
+      mv SHA256SUMS.next SHA256SUMS.txt
+    done
+    sha256sum "$@" >> SHA256SUMS.txt )
+}
+
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; PROJ="$(cd "$HERE/.." && pwd)"
 command -v fasttree >/dev/null && FT=fasttree || FT=FastTree
 for ty in RSV-A RSV-B; do
@@ -32,7 +47,7 @@ PY
   "$FT" -gtr -nt -log "$HERE/fasttree_masked_$ty.log" "$HERE/masked_$ty.fasta" \
       > "$HERE/tree_masked_$ty.nwk" 2> "$HERE/fasttree_masked_$ty.err"
 done
-( cd "$HERE" && sha256sum tree_masked_RSV-A.nwk tree_masked_RSV-B.nwk >> SHA256SUMS.txt )
+record_sums "$HERE" tree_masked_RSV-A.nwk tree_masked_RSV-B.nwk
 # BUILD PROVENANCE: the masked trees depend on the alignment AND the mask, so both
 # digests are recorded. Matching tip labels cannot detect a superseded mask.
 for ty in RSV-A RSV-B; do

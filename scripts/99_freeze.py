@@ -52,7 +52,10 @@ AUTHORITATIVE = [
  "06_convergence_diagnosis.csv","28_dependency_check.csv",
  "25_g_boundary_agreement.csv",
  "29_household_key_diagnostic.csv","29_household_key_partition_identity.csv",
- "29_household_key_mother_field.csv"]
+ "29_household_key_mother_field.csv",
+ # the supplied-vs-Nextclade lineage disagreements are quoted in the methods, so
+ # the list belongs with the results the paper stands on, not among intermediates
+ "07_clade_disagreements.csv"]
 
 def sha256(p):
     h = hashlib.sha256()
