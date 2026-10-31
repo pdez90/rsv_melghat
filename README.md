@@ -58,9 +58,20 @@ The driver runs in stages and reports which ones ran. If a stage's inputs are
 absent it is SKIPPED, named in the closing summary, and the run exits non-zero,
 so a partial run cannot be mistaken for a complete one. Pass `--allow-skips` if
 a partial run is what you intend, or `--core` to skip the slow resampling panel.
+Before any tree-dependent analysis, `28_dependency_check.R` tests that each
+contextual tree's tip labels equal the sequence names in the alignment currently
+on disk, and stops the run if they disagree: file existence alone would let a tree
+left over from an earlier alignment pass. Timestamps are reported but advisory —
+here the decompressed contextual input is seconds newer than the alignment built
+from it, so an mtime rule would raise a false alarm. The check does not verify
+branch lengths or that the recorded mask was the one applied.
+
 Freeze afterwards with `python3 scripts/99_freeze.py`, and verify with
-`python3 scripts/99_freeze.py --verify`, which fails on any changed, missing or
-unverifiable entry.
+`python3 scripts/99_freeze.py --verify`. Verification reports two independent
+guarantees and fails on either: **live files** re-hashed against the manifest
+(changed, missing or unverifiable entries all fail), and **snapshot integrity** —
+every archived copy re-hashed, gzipped copies after decompression, so a corrupt or
+absent archive cannot pass just because the live file still agrees.
 
 ## Inputs you must obtain
 

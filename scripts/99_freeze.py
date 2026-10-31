@@ -49,7 +49,7 @@ AUTHORITATIVE = [
  "26_ascertainment_testing_step.csv","26_ascertainment_sequencing_step.csv","26_village_coverage.csv",
  "26_sequencing_step_within_season.csv",
  "27_discordant_cohort_status.csv","27_coverage_declared_definition.csv",
- "06_convergence_diagnosis.csv"]
+ "06_convergence_diagnosis.csv","28_dependency_check.csv"]
 
 def sha256(p):
     h = hashlib.sha256()
@@ -122,6 +122,25 @@ def main():
         rows = list(csv.DictReader(open(mp)))
         print(f"\n== 99 verify ==\n  manifest: {mp}")
         ok = changed = missing = skipped = 0
+        # SNAPSHOT INTEGRITY is a SEPARATE check from live-file agreement, and
+        # was previously not performed at all: the loop below only re-hashed the
+        # LIVE files, so a corrupted or truncated snapshot copy would pass. Each
+        # archived copy is now hashed too, gzipped copies after decompression,
+        # since the manifest records the digest of the UNCOMPRESSED bytes.
+        snap_ok = snap_bad = snap_absent = 0
+        def snap_digest(rec):
+            # the manifest's `snapshot` field ALREADY carries the .gz suffix when
+            # the copy is compressed -- appending another one looks for a file
+            # that never existed and reports every compressed entry as absent.
+            sp = os.path.join(freeze, rec["snapshot"])
+            gz = str(rec.get("snapshot_gzipped", "")).strip().lower() == "true"
+            if not os.path.exists(sp): return None
+            if not gz: return sha256(sp)
+            import gzip
+            h = hashlib.sha256()
+            with gzip.open(sp, "rb") as fh:
+                for b in iter(lambda: fh.read(1 << 20), b""): h.update(b)
+            return h.hexdigest()
         for r in rows:
             if r["path"].startswith("external/"):
                 # verify these too: by the absolute path recorded at freeze time,
@@ -141,14 +160,28 @@ def main():
             if not os.path.exists(p): print(f"  MISSING   {r['path']}"); missing += 1
             elif sha256(p) != r["sha256"]: print(f"  CHANGED   {r['path']}"); changed += 1
             else: ok += 1
-        print(f"  {ok} ok, {changed} changed, {missing} missing, {skipped} unchecked")
+        for r in rows:
+            d = snap_digest(r)
+            if d is None:
+                print(f"  SNAPSHOT ABSENT  {r['snapshot']}"); snap_absent += 1
+            elif d != r["sha256"]:
+                print(f"  SNAPSHOT CORRUPT {r['snapshot']}"); snap_bad += 1
+            else: snap_ok += 1
+        print(f"  live files:  {ok} ok, {changed} changed, {missing} missing, "
+              f"{skipped} unchecked")
+        print(f"  snapshots:   {snap_ok} ok, {snap_bad} corrupt, {snap_absent} absent")
         # An UNCHECKED entry is a FAILURE, not a pass with a note: it means an
         # external input is absent from its recorded location AND absent from the
         # snapshot, so the manifest no longer evidences anything about that file.
         # Treating it as success let a verification pass while part of the
         # analysis inputs could not be confirmed at all.
-        if changed or missing or skipped:
+        if changed or missing or skipped or snap_bad or snap_absent:
             print("== VERIFICATION FAILED ==")
+            if snap_bad or snap_absent:
+                print("  reason: the archived snapshot copy of one or more entries "
+                      "is absent or does not match its recorded digest, so the "
+                      "snapshot is not a faithful archive even where the live "
+                      "files agree. These are separate guarantees.")
             if skipped and not (changed or missing):
                 print("  reason: unchecked entries only -- an external input is "
                       "missing from both its recorded path and the snapshot, so "

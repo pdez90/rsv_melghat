@@ -25,9 +25,16 @@
 #   contextual/run_masked.sh  masked trees         (needs FastTree)
 #   scripts/21_prepare_context.py  only when ADDING new contextual genomes
 # Run those three when the alignments or trees must be regenerated; the delivered
-# copies carry checksums in contextual/SHA256SUMS.txt. Stages D and E below check
-# for their outputs and refuse to run on absent or stale inputs rather than
-# silently producing nothing.
+# copies carry checksums in contextual/SHA256SUMS.txt.
+#
+# PREREQUISITE CHECKS, stated accurately: the stage() helper checks only that the
+# required files EXIST. Existence is not currency, so before any tree-dependent
+# analysis runs, 28_dependency_check.R tests CONTENT CORRESPONDENCE -- that each
+# tree's tip labels equal the sequence names in the alignment currently on disk --
+# and stops the run if they disagree. Timestamps are reported but advisory: in this
+# project the decompressed contextual input is seconds newer than the alignment
+# built from it, so an mtime rule would raise a false alarm. The check does not
+# verify branch lengths, nor that the recorded mask was the one applied.
 
 args        <- commandArgs(trailingOnly = TRUE)
 core        <- "--core"        %in% args
@@ -111,8 +118,12 @@ stage("E G-repeat table",
 
 stage("E tree-dependent analyses",
       c("contextual/tree_RSV-A.nwk", "contextual/tree_RSV-B.nwk",
-        "contextual/tree_masked_RSV-A.nwk", "contextual/tree_masked_RSV-B.nwk"),
+        "contextual/tree_masked_RSV-A.nwk", "contextual/tree_masked_RSV-B.nwk",
+        "contextual/combined_RSV-A.fasta", "contextual/combined_RSV-B.fasta"),
       function() {
+        # correspondence before use: this stops the run if any tree was built
+        # from a different alignment than the one now on disk
+        run_r("28_dependency_check.R")
         for (s in c("16_tree_annotation.R", "18_annotated_tree.R",
                     "19_mask_comparison.R")) run_r(s)
       })
