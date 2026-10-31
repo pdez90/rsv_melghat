@@ -48,7 +48,8 @@ AUTHORITATIVE = [
  "24_f_context_comparison.csv","24_f_combinations.csv","25_g_context_comparison.csv",
  "26_ascertainment_testing_step.csv","26_ascertainment_sequencing_step.csv","26_village_coverage.csv",
  "26_sequencing_step_within_season.csv",
- "27_discordant_cohort_status.csv","27_coverage_declared_definition.csv"]
+ "27_discordant_cohort_status.csv","27_coverage_declared_definition.csv",
+ "06_convergence_diagnosis.csv"]
 
 def sha256(p):
     h = hashlib.sha256()
@@ -141,7 +142,18 @@ def main():
             elif sha256(p) != r["sha256"]: print(f"  CHANGED   {r['path']}"); changed += 1
             else: ok += 1
         print(f"  {ok} ok, {changed} changed, {missing} missing, {skipped} unchecked")
-        if changed or missing: print("== VERIFICATION FAILED =="); sys.exit(1)
+        # An UNCHECKED entry is a FAILURE, not a pass with a note: it means an
+        # external input is absent from its recorded location AND absent from the
+        # snapshot, so the manifest no longer evidences anything about that file.
+        # Treating it as success let a verification pass while part of the
+        # analysis inputs could not be confirmed at all.
+        if changed or missing or skipped:
+            print("== VERIFICATION FAILED ==")
+            if skipped and not (changed or missing):
+                print("  reason: unchecked entries only -- an external input is "
+                      "missing from both its recorded path and the snapshot, so "
+                      "it cannot be verified. Restore the file or re-freeze.")
+            sys.exit(1)
         print("== verification passed ==")
         return
 

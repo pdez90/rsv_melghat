@@ -30,22 +30,66 @@ Run that line **inside R**, or from the shell as
 
 `dplyr` must be >= 1.1.0 (the linkage uses `relationship = "many-to-many"`).
 
-**Nothing else needs installing.** Nextclade was run in the browser at
-clades.nextstrain.org, which analyses sequences locally and needs no software;
-its output is already in `nextclade/`. MAFFT is optional and only used by
-`02b_clade_assign_crosscheck.R`, which `run_all.R` does not call.
+Python 3 is required for stages D, E and F of the pipeline (alignment
+coordinate handling, the G-repeat helper, and the F/G contextual comparisons)
+and for the freeze. The Python scripts use the standard library only -- no
+third-party packages, no Biopython -- so any python3 will do.
+Nextclade itself needs no installation: it was run in the browser at
+clades.nextstrain.org, which analyses sequences locally.
+
+**This repository contains code only.** No participant data, no genome
+sequences, no Nextclade output and no result tables are tracked here, because
+the cohort data are identifiable and the sequences are not ours to redistribute.
+Everything the pipeline reads must be supplied separately -- see "Inputs you must
+obtain" below. A clone of this repository therefore will NOT run end to end as
+cloned.
+
+External binaries, needed only to rebuild the contextual alignments and trees:
+
+    mafft       contextual/run_add.sh     builds combined_RSV-*.fasta
+    FastTree    contextual/run_tree.sh    builds tree_RSV-*.nwk
+                contextual/run_masked.sh  builds tree_masked_RSV-*.nwk
 
 Then:
 
     Rscript scripts/run_all.R
 
+The driver runs in stages and reports which ones ran. If a stage's inputs are
+absent it is SKIPPED, named in the closing summary, and the run exits non-zero,
+so a partial run cannot be mistaken for a complete one. Pass `--allow-skips` if
+a partial run is what you intend, or `--core` to skip the slow resampling panel.
+Freeze afterwards with `python3 scripts/99_freeze.py`, and verify with
+`python3 scripts/99_freeze.py --verify`, which fails on any changed, missing or
+unverifiable entry.
+
+## Inputs you must obtain
+
+None of these are in this repository.
+
+| Input | Where the pipeline looks | How to obtain |
+|---|---|---|
+| `ari.csv`, `lrtideaths.csv`, `demographics.csv` | `../Final/Data/` | MAHAN study team; controlled access, identifiable cohort records |
+| `NP_results_with_clade_sequencing.csv` | `data/` | MAHAN study team / NIV Pune |
+| Household GPS | `../GISproject/GISProject/capstone project Mattie/` | MAHAN study team; household coordinates |
+| `village_characteristics.dta`, `93 village list.csv` | `../` | MAHAN study team |
+| Melghat genome FASTAs | `data/` | NIV Pune; deposition pending |
+| Nextclade output (`nextclade.tsv`, `.csv`, `.aligned.fasta`) | `nextclade/RSV-A/`, `nextclade/RSV-B/` | regenerate: upload the FASTAs from `01b_export_fasta.R` to clades.nextstrain.org, datasets `EPI_ISL_412866` (RSV-A) and `EPI_ISL_1653999` (RSV-B) |
+| INFORM contextual panel | `contextual/inform/` | Langedijk et al. 2024, Nat Commun 15:3083 |
+| Nextclade reference files | `contextual/reference/` | the same Nextclade datasets |
+
+Contact the corresponding author for the controlled items. Checksums for every
+input the analysis actually used are recorded in the freeze manifest, so a
+recipient can confirm they hold the same files.
+
 ## Layout
 
-    data/        sequencing inputs (NP results CSV, Nextclade input FASTAs)
-    nextclade/   Nextclade Web output, RSV-A/ and RSV-B/ (+ run1_superseded/)
-    scripts/     numbered R pipeline
-    output/      results written by the scripts
-    archive_python/   superseded first-pass Python
+    data/        sequencing inputs (NP results CSV, Nextclade input FASTAs) -- NOT tracked
+    nextclade/   Nextclade Web output, RSV-A/ and RSV-B/                     -- NOT tracked
+    contextual/  alignments, trees, INFORM panel, reference  -- only the .sh drivers tracked
+    scripts/     numbered R and Python pipeline                              -- tracked
+    output/      results written by the scripts                             -- NOT tracked
+    freeze/      dated snapshots + SHA-256 manifest                         -- NOT tracked
+    manuscript/  Methods and Results                                        -- NOT tracked
 
 Cohort data is NOT duplicated here. `scripts/00_setup.R::data_path()` resolves
 input files across `data/`, `../Final/Data/` (ari, lrtideaths, demographics),
@@ -102,5 +146,11 @@ studyid + episode-date matches, 13 to the child's most recent earlier episode of
 the same RSV subgroup within 45 days (flagged in `link_status`). Of the 38
 unlinked, 28 are 2021/22 swabs from children already aged 2 or over, 6 have no
 matching episode, and 4 study IDs are absent from demographics.csv. The cohort
-has 644 RSV-positive episodes, so sequencing covers about 31.5%.
+has 644 RSV-positive episodes. Coverage is reported on the declared definition --
+an episode is RSV-positive if the cohort flags say so -- which gives
+**201/644 (31.2%)**: two linked genomes are cohort-negative against a positive
+laboratory result and are excluded from the coverage numerator while being
+retained in the genomic analyses. See `scripts/27_cohort_status_audit.R`. The
+wider all-linked numerator, 203/644 (31.5%), is reported alongside in
+`output/03_cohort_rsv_by_season.csv` so the two can be read against each other.
 See `output/Melghat_RSV_genotypic_data_gaps.docx` for the full accounting.

@@ -12,7 +12,11 @@ translated and read at the positions of interest.
 
 Staged comparison, not one pooled percentage:
   stage 1  same RSV subgroup
-  stage 2  overlapping collection years only
+  stage 2  overlapping collection years -- applied to BOTH sides. The panel
+           ends in April 2020, so the overlap window is 2016-2020. An earlier
+           version restricted only the panel and kept every Melghat genome,
+           including the 2021/22 season that lies outside the panel's span
+           entirely; that comparison was not time-matched despite its label.
   stage 3  within lineage where the panel carries enough sequences
   stage 4  country composition reported, so sample-size imbalance is visible
 
@@ -42,6 +46,23 @@ _aa = ("FFLLSSSSYY**CC*WLLLLPPPPHHQQRRRRIIIMTTTTNNKKSSRRVVVVAAAADDEEGGGG")
 for _i, (_c1, _c2, _c3) in enumerate((a, b, c) for a in _b for b in _b for c in _b):
     CODE[_c1 + _c2 + _c3] = _aa[_i]
 
+# Melghat collection seasons, so the Melghat side of the time-matched
+# comparison can be restricted to the panel's span. Keyed by FieldNoNIV_f.
+OVERLAP_SEASONS = {"2016/17", "2017/18", "2018/19", "2019/20"}
+
+def melghat_seasons():
+    """FieldNoNIV_f -> season, from 02_nextclade_linked.csv."""
+    f = os.path.join(OUT, "02_nextclade_linked.csv")
+    if not os.path.exists(f):
+        sys.exit(f"missing {f}: run stage A of run_all.R first")
+    out = {}
+    with open(f, newline="") as fh:
+        for r in csv.DictReader(fh):
+            k, se = r.get("FieldNoNIV_f"), r.get("season")
+            if k and se: out[k] = se
+    if not out: sys.exit("no seasons read from 02_nextclade_linked.csv")
+    return out
+
 def read_fa(p):
     d, k, buf = {}, None, []
     for line in open(p):
@@ -66,6 +87,7 @@ def ctx_meta(name):
     return country, year
 
 def run(ty):
+    global SEASON
     comb = read_fa(os.path.join(CTX, f"combined_{ty}.fasta"))
     ncal = read_fa(os.path.join(PROJ, "nextclade", ty, "nextclade.aligned.fasta"))
     refn = next(k for k in comb if k.startswith("REFERENCE"))
@@ -95,9 +117,12 @@ def run(ty):
     for p in POS[ty]:
         i = p - 1
         mel_states = collections.Counter()
+        mel_ov_states = collections.Counter()   # Melghat, overlap window only
         for k in mel:
             a = aa_at(proj[k], i)
-            if a: mel_states[a] += 1
+            if not a: continue
+            mel_states[a] += 1
+            if SEASON.get(k) in OVERLAP_SEASONS: mel_ov_states[a] += 1
         ctx_states = collections.Counter(); ctx_by_year = collections.defaultdict(collections.Counter)
         ctx_country = collections.defaultdict(collections.Counter)
         for k in comb:
@@ -109,13 +134,17 @@ def run(ty):
             if y: ctx_by_year[y][a] += 1
             ctx_country[a][c] += 1
         mel_n, ctx_n = sum(mel_states.values()), sum(ctx_states.values())
+        mel_ov_n = sum(mel_ov_states.values())
         # the Melghat majority state, and how common it is in the panel
         if not mel_n: continue
         for state, cnt in sorted(mel_states.items(), key=lambda x: -x[1]):
             cctx = ctx_states.get(state, 0)
-            # overlapping years only (Melghat 2016-2022 vs panel, which ends 2020)
+            # TIME-MATCHED comparison, both sides restricted to the overlap
+            # window. The panel ends April 2020, so y >= "2016" is 2016-2020;
+            # the Melghat side drops 2021/22, which the panel cannot cover.
             ov = sum(ctx_by_year[y].get(state, 0) for y in ctx_by_year if y >= "2016")
             ov_n = sum(sum(ctx_by_year[y].values()) for y in ctx_by_year if y >= "2016")
+            mel_ov = mel_ov_states.get(state, 0)
             top = ", ".join(f"{c}:{n}" for c, n in ctx_country[state].most_common(3))
             rows.append(dict(subgroup=ty, position=p, state=state,
                              is_reference_state=(state == ref_states[p]),
@@ -123,8 +152,14 @@ def run(ty):
                              melghat_pct=round(100 * cnt / mel_n, 1),
                              panel_n=cctx, panel_callable=ctx_n,
                              panel_pct=round(100 * cctx / ctx_n, 2) if ctx_n else None,
-                             panel_2016plus_n=ov, panel_2016plus_callable=ov_n,
-                             panel_2016plus_pct=round(100 * ov / ov_n, 2) if ov_n else None,
+                             # all Melghat genomes, every season
+                             melghat_all_seasons_n=cnt,
+                             # time-matched: Melghat 2016/17-2019/20 vs panel 2016-2020
+                             melghat_overlap_n=mel_ov, melghat_overlap_callable=mel_ov_n,
+                             melghat_overlap_pct=(round(100 * mel_ov / mel_ov_n, 1)
+                                                  if mel_ov_n else None),
+                             panel_2016_2020_n=ov, panel_2016_2020_callable=ov_n,
+                             panel_2016_2020_pct=round(100 * ov / ov_n, 2) if ov_n else None,
                              panel_top_countries=top))
     return rows, proj, mel, refn, comb
 
@@ -144,6 +179,7 @@ def combos(ty, proj, mel, refn, comb):
     return out
 
 if __name__ == "__main__":
+    SEASON = melghat_seasons()   # read once; used by run() for the time match
     allrows, allcombo = [], []
     for ty in ("RSV-A", "RSV-B"):
         r, proj, mel, refn, comb = run(ty)
@@ -155,8 +191,14 @@ if __name__ == "__main__":
                 print(f"  F{x['position']}{x['state']}{' (ref)' if x['is_reference_state'] else ''}: "
                       f"Melghat {x['melghat_n']}/{x['melghat_callable']} ({x['melghat_pct']}%) | "
                       f"panel {x['panel_n']}/{x['panel_callable']} ({x['panel_pct']}%) | "
-                      f"panel 2016+ {x['panel_2016plus_n']}/{x['panel_2016plus_callable']} "
-                      f"({x['panel_2016plus_pct']}%)")
+                      f"| TIME-MATCHED Melghat {x['melghat_overlap_n']}/"
+                      f"{x['melghat_overlap_callable']} ({x['melghat_overlap_pct']}%) "
+                      f"vs panel 2016-2020 {x['panel_2016_2020_n']}/"
+                      f"{x['panel_2016_2020_callable']} ({x['panel_2016_2020_pct']}%)")
+    print("\nThe time-matched columns restrict BOTH sides to 2016-2020. The")
+    print("all-seasons Melghat column includes 2021/22, which the panel does not")
+    print("cover at all, so it is a comparison against a HISTORICAL panel and is")
+    print("labelled as such wherever it is quoted.")
     with open(os.path.join(OUT, "24_f_context_comparison.csv"), "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(allrows[0].keys())); w.writeheader(); w.writerows(allrows)
     with open(os.path.join(OUT, "24_f_combinations.csv"), "w", newline="") as f:

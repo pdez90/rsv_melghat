@@ -122,14 +122,45 @@ for (nm in names(MODELS)) {
                       # non-singular fit can still have failed to converge, so
                       # both are recorded and neither is inferred from the other.
                       # Same test as 12_sensitivity.R O2.
-                      converged = is.null(m@optinfo$conv$lme4$messages),
+                      # TWO convergence signals decide `clean`, and neither is
+                      # inferred from the other:
+                      #  - lme4's own post-fit checks (messages)
+                      #  - the optimizer's return code, conv$opt (0 = success)
+                      # Two gradient diagnostics are recorded ALONGSIDE, and are
+                      # NOT part of the pass/fail test:
+                      #  - max_abs_grad: the plain maximum absolute gradient.
+                      #  - max_abs_scaled_grad: lme4's CHOLESKY-scaled gradient,
+                      #    solve(chol(Hessian), gradient). chol() requires a
+                      #    positive-definite Hessian, so this is NA whenever the
+                      #    Hessian is NOT positive-definite -- singular as well
+                      #    as indefinite. The NA is a DIAGNOSTIC OUTCOME, not a
+                      #    finding in itself: it says the scaled gradient could
+                      #    not be formed, and the reason needs looking at. Nor
+                      #    does a finite value prove anything is wrong with the
+                      #    code -- a refit that yields one warrants inspection,
+                      #    not an assumption of error. An earlier version used
+                      #    solve(Hessian, gradient), which is NOT lme4's
+                      #    criterion: an indefinite Hessian can still be
+                      #    invertible, so that version returned a small-looking
+                      #    number for a degenerate fit instead of NA. Any
+                      #    magnitude recorded by that earlier version should be
+                      #    disregarded.
+                      no_lme4_msg = is.null(m@optinfo$conv$lme4$messages),
+                      optimizer_code = tryCatch(as.integer(m@optinfo$conv$opt),
+                                                error = function(e) NA_integer_),
+                      max_abs_grad = tryCatch(max(abs(m@optinfo$derivs$gradient)),
+                                              error = function(e) NA_real_),
+                      max_abs_scaled_grad = tryCatch(
+                        max(abs(with(m@optinfo$derivs, solve(chol(Hessian), gradient)))),
+                        error = function(e) NA_real_),
                       optimizer_msg = if (length(m@optinfo$conv$lme4$messages))
                         paste(m@optinfo$conv$lme4$messages, collapse = " | ") else NA_character_) %>%
-    mutate(status = case_when(
-      !converged &  singular ~ "UNRELIABLE: did not converge; singular",
-      !converged             ~ "UNRELIABLE: did not converge",
-      singular               ~ "UNRELIABLE: singular (variance component at 0)",
-      TRUE                   ~ "converged"))
+    mutate(clean = no_lme4_msg & !is.na(optimizer_code) & optimizer_code == 0,
+           status = case_when(
+      !clean &  singular ~ "UNRELIABLE: convergence not established; singular",
+      !clean             ~ "UNRELIABLE: convergence not established -- diagnose before interpreting",
+      singular           ~ "UNRELIABLE: singular (variance component at 0)",
+      TRUE               ~ "converged (no lme4 message, optimizer code 0)"))
 }
 cat("\nRSV+ vs tested-negative, very-severe outcome (odds ratios):\n")
 print(as.data.frame(bind_rows(res)))
@@ -154,6 +185,71 @@ cat("would matter clinically in either direction -- this is not evidence of no e
 cat("Restricting to tested episodes avoids coding untested children as negative but\n")
 cat("does NOT remove selection bias from severity-dependent testing.\n")
 write_out(bind_rows(res), "06_severity_model_sensitivity.csv")
+
+## ---- convergence diagnosis -------------------------------------------------
+## lme4's convergence guidance treats a warning as a flag to CHECK the fit, not
+## as automatic invalidation of every coefficient. The two checks it asks for are
+## the scaled/relative gradient (recorded per fit above) and agreement of the
+## estimate across optimizers. Any specification whose convergence was not
+## established above is therefore refitted with each optimizer that ships with
+## lme4, and the estimates compared. Agreement across optimizers with small
+## relative gradients argues the estimate is usable despite the warning;
+## disagreement, or a gradient that cannot be evaluated, argues it is not.
+## This writes a table either way, so the file always exists for the freeze.
+res_tbl  <- bind_rows(res)
+needs_dx <- res_tbl$model[!grepl("^converged", res_tbl$status)]
+dx <- list()
+for (nm in needs_dx) for (opt in c("bobyqa", "Nelder_Mead", "nloptwrap")) {
+  md <- try(glmer(MODELS[[nm]], data = DATA[[nm]], family = binomial,
+                  control = glmerControl(optimizer = opt)), silent = TRUE)
+  key <- paste(nm, opt)
+  if (inherits(md, "try-error")) {
+    dx[[key]] <- tibble(model = nm, optimizer = opt, note = "fit errored",
+                        optimizer_msg = as.character(md))
+    next
+  }
+  zd <- coef(summary(md))["rsv_posTRUE", ]
+  dx[[key]] <- tibble(
+    model = nm, optimizer = opt, note = NA_character_,
+    fitted_episodes = nobs(md), rsv_pos_in_fit = sum(model.frame(md)$rsv_pos),
+    seasons_in_fit = if ("factor(season)" %in% names(model.frame(md)))
+      n_distinct(model.frame(md)[["factor(season)"]]) else NA_integer_,
+    OR = round(exp(zd[1]), 3),
+    lo = round(exp(zd[1] - 1.96 * zd[2]), 3),
+    hi = round(exp(zd[1] + 1.96 * zd[2]), 3),
+    p  = round(zd[4], 3),
+    singular = isSingular(md),
+    no_lme4_msg = is.null(md@optinfo$conv$lme4$messages),
+    optimizer_code = tryCatch(as.integer(md@optinfo$conv$opt),
+                              error = function(e) NA_integer_),
+    max_abs_grad = tryCatch(max(abs(md@optinfo$derivs$gradient)),
+                            error = function(e) NA_real_),
+    # lme4's Cholesky-scaled gradient; NA when the Hessian is not
+    # positive-definite, which is itself the finding
+    max_abs_scaled_grad = tryCatch(
+      max(abs(with(md@optinfo$derivs, solve(chol(Hessian), gradient)))),
+      error = function(e) NA_real_),
+    optimizer_msg = if (length(md@optinfo$conv$lme4$messages))
+      paste(md@optinfo$conv$lme4$messages, collapse = " | ") else NA_character_)
+}
+if (length(dx)) {
+  dxt <- bind_rows(dx)
+  cat("\n-- convergence diagnosis: specifications whose convergence was not established --\n")
+  print(as.data.frame(dxt))
+  cat("\nRead across optimizers for each model. Agreement of the coefficient\n")
+  cat("across optimizers supports STABILITY OF THE POINT ESTIMATE only. It does\n")
+  cat("not validate the fit: Hessian warnings and a singular fit still bear on\n")
+  cat("the standard errors and therefore on the interval, which is the part\n")
+  cat("least safe to quote from a fit whose convergence is not established.\n")
+  cat("max_abs_scaled_grad is NA whenever the Hessian is not positive-definite --\n")
+  cat("singular as well as indefinite. That NA is a diagnostic outcome to be\n")
+  cat("explained, not a finding on its own and not a value to work around.\n")
+} else {
+  dxt <- tibble(model = NA_character_, optimizer = NA_character_,
+                note = "no specification required diagnosis: all converged")
+  cat("\n-- convergence diagnosis: not required, every specification converged --\n")
+}
+write_out(dxt, "06_convergence_diagnosis.csv")
 
 ## ---- 3. PRIMARY: lineage comparison within a season -------------------------
 cat("\n-- severity by lineage, within season (sequenced genomes) --\n")
