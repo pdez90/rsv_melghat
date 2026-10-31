@@ -49,7 +49,8 @@ AUTHORITATIVE = [
  "26_ascertainment_testing_step.csv","26_ascertainment_sequencing_step.csv","26_village_coverage.csv",
  "26_sequencing_step_within_season.csv",
  "27_discordant_cohort_status.csv","27_coverage_declared_definition.csv",
- "06_convergence_diagnosis.csv","28_dependency_check.csv"]
+ "06_convergence_diagnosis.csv","28_dependency_check.csv",
+ "25_g_boundary_agreement.csv"]
 
 def sha256(p):
     h = hashlib.sha256()
@@ -94,6 +95,13 @@ def collect():
          and p.endswith(".fasta")], "intermediate: alignment")
     add([p for p in listdir("contextual")
          if p.endswith(".nwk") or p.endswith(".sh")], "intermediate: tree and driver")
+    # build-provenance sidecars written by run_tree.sh / run_masked.sh: these ARE
+    # part of the reproducibility package, since they are what lets a later run
+    # establish that a tree was built from the alignment and mask on disk. They
+    # were previously collected by no group at all, so a recorded provenance would
+    # not have been archived or verified.
+    add([p for p in listdir("contextual") if p.endswith(".provenance")],
+        "intermediate: tree build provenance")
     add([p for p in listdir("output") if os.path.basename(p).startswith("17_mask_")], "intermediate: mask")
     add([os.path.join(OUT, f) for f in AUTHORITATIVE], "authoritative result")
     add(listdir("manuscript", {".docx", ".pdf"}), "manuscript")

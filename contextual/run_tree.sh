@@ -17,4 +17,14 @@ for ty in A B; do
   "$FT" -gtr -nt -log "$HERE/fasttree_RSV-$ty.log" "$IN" > "$HERE/tree_RSV-$ty.nwk" 2> "$HERE/fasttree_RSV-$ty.err"
 done
 ( cd "$HERE" && sha256sum tree_RSV-A.nwk tree_RSV-B.nwk >> SHA256SUMS.txt )
+# BUILD PROVENANCE: record the digest of the exact input this tree was built from,
+# beside the tree. A taxon-set check cannot establish this -- two alignments can
+# carry identical sequence names but different nucleotides or columns -- so the
+# input digest is written here and verified later by 28_dependency_check.R.
+for ty in A B; do
+  ( cd "$HERE" && printf 'alignment_sha256=%s\nalignment_file=%s\nbuilt=%s\nbuilder=run_tree.sh\n' \
+      "$(sha256sum "combined_RSV-$ty.fasta" | cut -d" " -f1)" \
+      "combined_RSV-$ty.fasta" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > "tree_RSV-$ty.nwk.provenance" )
+done
 echo "[*] done"

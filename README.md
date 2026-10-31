@@ -58,13 +58,29 @@ The driver runs in stages and reports which ones ran. If a stage's inputs are
 absent it is SKIPPED, named in the closing summary, and the run exits non-zero,
 so a partial run cannot be mistaken for a complete one. Pass `--allow-skips` if
 a partial run is what you intend, or `--core` to skip the slow resampling panel.
-Before any tree-dependent analysis, `28_dependency_check.R` tests that each
-contextual tree's tip labels equal the sequence names in the alignment currently
-on disk, and stops the run if they disagree: file existence alone would let a tree
-left over from an earlier alignment pass. Timestamps are reported but advisory —
-here the decompressed contextual input is seconds newer than the alignment built
-from it, so an mtime rule would raise a false alarm. The check does not verify
-branch lengths or that the recorded mask was the one applied.
+Before any tree-dependent analysis, `28_dependency_check.R` runs two checks of
+different strength, and stops the run on a failure of either.
+
+**Taxon-set consistency.** Each tree's tip labels must equal the sequence names in
+the alignment currently on disk. Failing this disproves correspondence; passing it
+does **not** establish that the tree was built from these inputs, because two
+alignments can share sequence names while differing in nucleotides, columns or
+mask. File existence alone is weaker still.
+
+**Build provenance.** `contextual/run_tree.sh` and `run_masked.sh` write
+`<tree>.provenance` beside each tree, recording the SHA-256 of the alignment (and,
+for masked trees, the mask) actually used. Where that file exists the digests are
+re-computed from the inputs now on disk and compared, which does establish
+correspondence. Trees built before provenance recording was added report
+`UNVERIFIED` rather than passing; rebuild with the two shell scripts to close it.
+Rebuilding the trees needs **FastTree only** — `run_tree.sh` and `run_masked.sh`
+work from the combined alignments already on disk and do not re-align, so MAFFT is
+not required and neither the alignments nor the mask definitions change. The tree
+files do change, so every tree-dependent result must be re-checked afterwards.
+
+Timestamps are advisory only — here the decompressed contextual input is seconds
+newer than the alignment built from it, so an mtime rule would raise a false
+alarm. Neither check verifies branch lengths or model settings.
 
 Freeze afterwards with `python3 scripts/99_freeze.py`, and verify with
 `python3 scripts/99_freeze.py --verify`. Verification reports two independent

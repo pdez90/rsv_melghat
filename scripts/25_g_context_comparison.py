@@ -108,8 +108,8 @@ for s in sorted(by_season):
                      three_prime=b, three_prime_pct=round(100*b/n, 2)))
 
 # overlapping-years head-to-head
-mel_ov = [k for k in mel if season.get(k) in ("2016/17", "2019/20")]
-ctx_ov = [k for k in comb if k not in mel and k != refn and (year_of(k) or "") in ("2016","2017","2018","2019","2020")]
+mel_ov = [k for k in sorted(mel) if season.get(k) in ("2016/17", "2019/20")]
+ctx_ov = [k for k in sorted(comb) if k not in mel and k != refn and (year_of(k) or "") in ("2016","2017","2018","2019","2020")]
 def rate(ks, i):
     n = len(ks); c = sum(1 for k in ks if (feats(k)[0] >= 0.50 if i == 0 else feats(k)[1] >= 60))
     return c, n, (100*c/n if n else None)
@@ -122,15 +122,48 @@ for i, lab in ((0, "apparent repeat absence"), (1, "apparent 3' shortening")):
                      three_prime=c2, three_prime_pct=round(p2, 2)))
 
 # do gap boundaries agree?
+bd_rows = []
 print("\n  Gap-run boundaries in the duplication window (reference positions):")
-mb = collections.Counter(run_boundaries(k) for k in mel if feats(k)[0] >= 0.50)
-cb = collections.Counter(run_boundaries(k) for k in comb
+# `mel` is a SET, so iterating it directly makes the Counter's insertion order
+# depend on per-process string hash randomisation. With several boundary patterns
+# tied at a count of 1, most_common() then reported a DIFFERENT singleton pattern
+# from run to run: PYTHONHASHSEED=3 printed 5435-5501 where seeds 1 and 2 printed
+# 5435-5491. Sorting makes the tie-break deterministic, and the full distribution
+# is printed rather than a top-3 slice, so a singleton can no longer be mistaken
+# for a representative pattern.
+mb = collections.Counter(run_boundaries(k) for k in sorted(mel) if feats(k)[0] >= 0.50)
+cb = collections.Counter(run_boundaries(k) for k in sorted(comb)
                          if k not in mel and k != refn and feats(k)[0] >= 0.50)
 for lab, cnt in (("Melghat", mb), ("panel", cb)):
-    print(f"    {lab}:")
-    for b, n in cnt.most_common(3):
+    tot = sum(cnt.values())
+    print(f"    {lab} ({tot} genomes meeting the repeat-absence criterion, "
+          f"{len(cnt)} distinct boundary patterns):")
+    for b, n in sorted(cnt.items(), key=lambda x: (-x[1], x[0])):
         print(f"      {b[0]}-{b[1]} ({b[2]} gapped cols): {n}")
+
+# The quantity of interest is not "the third most common pattern" but how many
+# Melghat genomes share the PANEL's dominant boundary exactly. Counted directly:
+if cb and mb:
+    dom = sorted(cb.items(), key=lambda x: (-x[1], x[0]))[0][0]
+    shared = mb.get(dom, 0)
+    print(f"\n    panel dominant boundary: {dom[0]}-{dom[1]} ({dom[2]} gapped cols), "
+          f"{cb[dom]} of {sum(cb.values())} panel genomes")
+    print(f"    Melghat genomes with exactly that boundary: {shared} of "
+          f"{sum(mb.values())}")
+    bd_rows.append(dict(side="comparison", stratum="panel dominant boundary",
+                        boundary=f"{dom[0]}-{dom[1]}", gapped_cols=dom[2],
+                        panel_n=cb[dom], panel_total=sum(cb.values()),
+                        melghat_n=shared, melghat_total=sum(mb.values())))
 
 with open(os.path.join(OUT, "25_g_context_comparison.csv"), "w", newline="") as f:
     w = csv.DictWriter(f, fieldnames=list(rows[0].keys())); w.writeheader(); w.writerows(rows)
 print("\n  -> wrote 25_g_context_comparison.csv")
+
+with open(os.path.join(OUT, "25_g_boundary_agreement.csv"), "w", newline="") as f:
+    if not bd_rows:
+        bd_rows = [dict(side="comparison", stratum="not computed",
+                        boundary="", gapped_cols="", panel_n="", panel_total="",
+                        melghat_n="", melghat_total="")]
+    w = csv.DictWriter(f, fieldnames=list(bd_rows[0].keys()))
+    w.writeheader(); w.writerows(bd_rows)
+print("  -> wrote 25_g_boundary_agreement.csv")

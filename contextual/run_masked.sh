@@ -33,4 +33,13 @@ PY
       > "$HERE/tree_masked_$ty.nwk" 2> "$HERE/fasttree_masked_$ty.err"
 done
 ( cd "$HERE" && sha256sum tree_masked_RSV-A.nwk tree_masked_RSV-B.nwk >> SHA256SUMS.txt )
+# BUILD PROVENANCE: the masked trees depend on the alignment AND the mask, so both
+# digests are recorded. Matching tip labels cannot detect a superseded mask.
+for ty in RSV-A RSV-B; do
+  ( cd "$HERE" && printf 'alignment_sha256=%s\nalignment_file=%s\nmask_sha256=%s\nmask_file=%s\nbuilt=%s\nbuilder=run_masked.sh\n' \
+      "$(sha256sum "combined_$ty.fasta" | cut -d" " -f1)" "combined_$ty.fasta" \
+      "$(sha256sum "$PROJ/output/17_mask_HVR2_$ty.txt" | cut -d" " -f1)" \
+      "output/17_mask_HVR2_$ty.txt" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      > "tree_masked_$ty.nwk.provenance" )
+done
 echo "[*] masked trees done"
