@@ -251,8 +251,11 @@ print(as.data.frame(O5 %>% filter(population == "all genomes (primary)") %>%
         select(subgroup, variant, product, detected, callable, not_callable, upper_bound_pct)))
 cat(sprintf("\ntotal detections across all %d listed variants x 3 populations: %d\n",
             nrow(EV), sum(O5$detected)))
-cat("Upper bounds are an independent-binomial approximation; these genomes are related\n")
-cat("by descent and are not independent draws, so true bounds are wider.\n")
+cat("These bounds assume independent sampling and do not account for genomic\n")
+cat("relatedness or selection into sequencing; they are not validated\n")
+cat("population-prevalence limits. Relatedness by descent does not by itself\n")
+cat("establish any particular corrected interval, so none is quoted here --\n")
+cat("\"wider\" was asserted without a model that would say how much wider.\n")
 
 write_out(O1, "12_O1_coverage.csv")
 write_out(O2, "12_O2_severity.csv")
