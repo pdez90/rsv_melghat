@@ -210,6 +210,25 @@ def main():
         print("  MISSING, nothing frozen:")
         for p in gone: print("    -", relpath(p))
         sys.exit(1)
+    # An EMPTY collected file is always a defect in this package -- no script,
+    # input, table or tree is legitimately zero bytes. Refuse to snapshot one.
+    #
+    # On 2026-10-31 a tree was truncated to 0 bytes by a failed rebuild and this
+    # freezer archived it, overwrote the only good copy in the same dated
+    # snapshot, and reported "verification passed" -- because hashing an empty
+    # file succeeds. A digest proves a file has not changed since it was
+    # recorded; it says nothing about whether the file was worth recording. This
+    # check is the missing half.
+    empty = [p for g, p in items if os.path.getsize(p) == 0]
+    if empty:
+        print("  EMPTY FILES, nothing frozen -- these are destroyed, not new:")
+        for p in empty: print("    -", relpath(p))
+        print("  Restore them (or rebuild them) before freezing. The existing")
+        print(f"  snapshot in {freeze} has NOT been touched.")
+        sys.exit(1)
+    if os.path.isdir(freeze):
+        print(f"  NOTE: replacing the existing snapshot in {freeze}")
+        print("        (same date). The copy it holds now will be overwritten.")
     os.makedirs(freeze, exist_ok=True)
     man, nbytes = [], 0
     for group, p in items:

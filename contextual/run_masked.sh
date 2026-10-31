@@ -20,7 +20,19 @@ record_sums() {
 }
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; PROJ="$(cd "$HERE/.." && pwd)"
-command -v fasttree >/dev/null && FT=fasttree || FT=FastTree
+# PRE-FLIGHT: resolve the binary BEFORE touching any output file. See the note
+# in run_tree.sh: on 2026-10-31 a missing FastTree truncated a tree to 0 bytes,
+# because the shell performs the redirection before looking the command up.
+FT=""
+for c in fasttree FastTree FastTreeDbl fasttreeDbl; do
+  command -v "$c" >/dev/null 2>&1 && { FT="$c"; break; }
+done
+if [ -z "$FT" ]; then
+  echo "ERROR: no FastTree binary on PATH (looked for: fasttree, FastTree, FastTreeDbl, fasttreeDbl)." >&2
+  echo "       Nothing has been modified. Install it first, e.g.  brew install fasttree" >&2
+  exit 127
+fi
+echo "[*] using $FT -- $("$FT" 2>&1 | head -1 || true)"
 for ty in RSV-A RSV-B; do
   python3 -I - "$HERE/combined_$ty.fasta" "$PROJ/output/17_mask_HVR2_$ty.txt" \
       "$HERE/masked_$ty.fasta" <<'PY'
@@ -45,7 +57,9 @@ with open(outp, "w") as o:
 PY
   echo "[$ty] FastTree on masked alignment"
   "$FT" -gtr -nt -log "$HERE/fasttree_masked_$ty.log" "$HERE/masked_$ty.fasta" \
-      > "$HERE/tree_masked_$ty.nwk" 2> "$HERE/fasttree_masked_$ty.err"
+      > "$HERE/tree_masked_$ty.nwk.partial" 2> "$HERE/fasttree_masked_$ty.err"
+  [ -s "$HERE/tree_masked_$ty.nwk.partial" ] || { echo "ERROR: $FT produced no tree for masked $ty; see fasttree_masked_$ty.err. Existing tree left untouched." >&2; rm -f "$HERE/tree_masked_$ty.nwk.partial"; exit 1; }
+  mv "$HERE/tree_masked_$ty.nwk.partial" "$HERE/tree_masked_$ty.nwk"
 done
 record_sums "$HERE" tree_masked_RSV-A.nwk tree_masked_RSV-B.nwk
 # BUILD PROVENANCE: the masked trees depend on the alignment AND the mask, so both

@@ -24,12 +24,33 @@ record_sums() {
 }
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-command -v fasttree >/dev/null && FT=fasttree || FT=FastTree
+# PRE-FLIGHT: resolve the binary BEFORE touching any output file.
+#
+# This block exists because of a real failure on 2026-10-31. The build line was
+#     "$FT" ... > tree_RSV-A.nwk
+# and FastTree was not installed. The shell performs the redirection FIRST, so
+# the tree was truncated to 0 bytes before the missing command was even looked
+# up; `set -e` cannot help, because nothing had failed yet at that point. A
+# re-freeze then archived the empty file and reported success. So: check the
+# binary first, and build to a temporary file that is only moved into place
+# once the build has actually succeeded.
+FT=""
+for c in fasttree FastTree FastTreeDbl fasttreeDbl; do
+  command -v "$c" >/dev/null 2>&1 && { FT="$c"; break; }
+done
+if [ -z "$FT" ]; then
+  echo "ERROR: no FastTree binary on PATH (looked for: fasttree, FastTree, FastTreeDbl, fasttreeDbl)." >&2
+  echo "       Nothing has been modified. Install it first, e.g.  brew install fasttree" >&2
+  exit 127
+fi
+echo "[*] using $FT -- $("$FT" 2>&1 | head -1 || true)"
 for ty in A B; do
   IN="$HERE/combined_RSV-$ty.fasta"
   [ -s "$IN" ] || { echo "ERROR: missing $IN -- run run_add.sh first" >&2; exit 1; }
   echo "[$ty] FastTree -gtr -nt  ($(grep -c '^>' "$IN") sequences)"
-  "$FT" -gtr -nt -log "$HERE/fasttree_RSV-$ty.log" "$IN" > "$HERE/tree_RSV-$ty.nwk" 2> "$HERE/fasttree_RSV-$ty.err"
+  "$FT" -gtr -nt -log "$HERE/fasttree_RSV-$ty.log" "$IN" > "$HERE/tree_RSV-$ty.nwk.partial" 2> "$HERE/fasttree_RSV-$ty.err"
+  [ -s "$HERE/tree_RSV-$ty.nwk.partial" ] || { echo "ERROR: $FT produced no tree for $ty; see fasttree_RSV-$ty.err. Existing tree left untouched." >&2; rm -f "$HERE/tree_RSV-$ty.nwk.partial"; exit 1; }
+  mv "$HERE/tree_RSV-$ty.nwk.partial" "$HERE/tree_RSV-$ty.nwk"
 done
 record_sums "$HERE" tree_RSV-A.nwk tree_RSV-B.nwk
 # BUILD PROVENANCE: record the digest of the exact input this tree was built from,
