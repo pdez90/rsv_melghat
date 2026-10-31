@@ -1,0 +1,57 @@
+# ---------------------------------------------------------------------------
+# Melghat RSV genomics -- scripts only. NO participant data, NO sequences,
+# NO result tables derived from them.
+#
+# This repository is deliberately code-only. The analysis reads identifiable
+# cohort data (ari.csv, demographics.csv, lrtideaths.csv, GPS household
+# coordinates) and viral genome sequences that are not ours to publish here.
+# The rule below is allowlist-style: everything is ignored, then scripts are
+# added back, so a new data file in a new folder is excluded by default
+# rather than by remembering to add a rule.
+# ---------------------------------------------------------------------------
+
+# ignore everything
+*
+
+# ...then allow directories to be descended into
+!*/
+
+# ...and allow only code and documentation
+!.gitignore
+!README.md
+!scripts/**/*.R
+!scripts/**/*.py
+!scripts/**/*.sh
+!contextual/*.sh
+!contextual/ADD_2021_22_CONTEXT.md
+!SENSITIVITY_PLAN.md
+
+# belt and braces: never commit these, even if a rule above is loosened
+data/
+output/
+freeze/
+nextclade/
+manuscript/
+contextual/*.fasta
+contextual/*.nwk
+contextual/*.csv
+contextual/inform/
+contextual/reference/
+*.csv
+*.tsv
+*.dta
+*.rds
+*.fasta
+*.fa
+*.nwk
+*.docx
+*.pdf
+*.png
+*.xlsx
+*.zip
+*.gz
+.DS_Store
+.Rhistory
+.RData
+.Rproj.user/
+__pycache__/
