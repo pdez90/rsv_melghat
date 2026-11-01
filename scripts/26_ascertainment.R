@@ -158,6 +158,41 @@ cat(sprintf("  coverage across villages: median %.1f%%, IQR %.1f-%.1f%%, range %
             median(vc$pct), quantile(vc$pct,.25), quantile(vc$pct,.75), min(vc$pct), max(vc$pct)))
 print(as.data.frame(head(vc, 10)), right = FALSE)
 
+## ---- adherence to the stated swabbing rule -------------------------------
+## The cohort protocol (companion access-to-care paper, S1.4) directs a swab for
+## any child assessed with severe or very severe LRTI. That is a DESIGN, and it
+## explains the direction of the testing-step imbalance -- but it is not a
+## complete account of who was tested, in either direction:
+##   - not every severe episode was swabbed (incomplete implementation), and
+##   - some non-severe episodes were swabbed anyway.
+## Both are quantified here so the manuscript can quote them from a table rather
+## than assert that the protocol fully explains the sample.
+rule <- tibble::tibble(
+  quantity = c("severe or very severe, among tested",
+               "tested, among severe or very severe",
+               "non-severe among tested",
+               "non-severe among tested, recorded community-managed",
+               "non-severe among tested, recorded facility"),
+  numerator = c(
+    sum(ari$swabbed & ari$lri_cat %in% c(1, 2), na.rm = TRUE),
+    sum(ari$lri_cat %in% c(1, 2) & ari$swabbed, na.rm = TRUE),
+    sum(ari$swabbed & !(ari$lri_cat %in% c(1, 2)), na.rm = TRUE),
+    sum(ari$swabbed & !(ari$lri_cat %in% c(1, 2)) & ari$community == 1, na.rm = TRUE),
+    sum(ari$swabbed & !(ari$lri_cat %in% c(1, 2)) & ari$hosp_lri == 1, na.rm = TRUE)),
+  denominator = c(
+    sum(ari$swabbed, na.rm = TRUE),
+    sum(ari$lri_cat %in% c(1, 2), na.rm = TRUE),
+    sum(ari$swabbed, na.rm = TRUE),
+    sum(ari$swabbed & !(ari$lri_cat %in% c(1, 2)), na.rm = TRUE),
+    sum(ari$swabbed & !(ari$lri_cat %in% c(1, 2)), na.rm = TRUE))) %>%
+  mutate(pct = round(100 * numerator / denominator, 1))
+cat("\n-- adherence to the stated swabbing rule --\n")
+print(as.data.frame(rule))
+cat("  The rule is severity-triggered, so it explains the DIRECTION of the\n")
+cat("  testing-step imbalance. It does not fully explain WHO was tested:\n")
+cat("  severe episodes were under-sampled and some non-severe were sampled.\n")
+write_csv(rule, file.path(OUT, "26_testing_rule_adherence.csv"))
+
 write_csv(S1, file.path(OUT, "26_ascertainment_testing_step.csv"))
 write_csv(S2, file.path(OUT, "26_ascertainment_sequencing_step.csv"))
 write_csv(vc, file.path(OUT, "26_village_coverage.csv"))
