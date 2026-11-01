@@ -127,15 +127,40 @@ def relpath(p):
     rp = os.path.relpath(os.path.realpath(p), PROJ)
     return os.path.join("external", os.path.basename(p)) if rp.startswith("..") else rp
 
+def freeze_dirs():
+    """Every dated snapshot directory, newest last."""
+    root = os.path.join(PROJ, "freeze")
+    if not os.path.isdir(root): return []
+    return sorted(os.path.join(root, d) for d in os.listdir(root)
+                  if os.path.isdir(os.path.join(root, d)))
+
 def main():
     verify = "--verify" in sys.argv
     stamp  = datetime.date.today().isoformat()
     freeze = os.path.join(PROJ, "freeze", stamp)
 
     if verify:
-        mp = os.path.join(freeze, MANIFEST)
-        if not os.path.exists(mp): mp = os.path.join(OUT, MANIFEST)
-        if not os.path.exists(mp): sys.exit("no manifest found; run the freeze first")
+        # VERIFY THE SNAPSHOT THE MANIFEST BELONGS TO, not the one today's date
+        # happens to name. This bound `freeze` to date.today(), so the morning
+        # after a freeze every archived copy resolved to a directory that did
+        # not exist and was reported absent -- a package that verified at 23:59
+        # failed at 00:01 with nothing changed but the clock. The snapshot
+        # directory is now taken from the manifest actually loaded. An explicit
+        # path may be given: 99_freeze.py --verify freeze/2026-10-31
+        arg = [a for a in sys.argv[1:] if not a.startswith("--")]
+        if arg:
+            cand = arg[0]
+            mp = cand if os.path.isfile(cand) else os.path.join(cand, MANIFEST)
+        else:
+            dated = [os.path.join(d, MANIFEST) for d in freeze_dirs()]
+            dated = [m for m in dated if os.path.exists(m)]
+            mp = dated[-1] if dated else os.path.join(OUT, MANIFEST)
+        if not os.path.exists(mp): sys.exit(f"no manifest found at {mp}; run the freeze first")
+        # snapshot copies are resolved relative to the manifest's own directory
+        freeze = os.path.dirname(os.path.abspath(mp))
+        rows = list(csv.DictReader(open(mp)))
+        if len(freeze_dirs()) > 1:
+            print(f"\n  NOTE: {len(freeze_dirs())} dated snapshots exist; verifying {os.path.basename(freeze)}")
         rows = list(csv.DictReader(open(mp)))
         print(f"\n== 99 verify ==\n  manifest: {mp}")
         ok = changed = missing = skipped = 0
